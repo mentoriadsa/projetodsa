@@ -24,6 +24,8 @@ install.packages("corrplot")
 install.packages("ggplot2")
 install.packages("readr")
 install.packages("tidyverse")
+install.packages("mice")
+library(mice)
 library(tidyverse)
 library(dplyr)
 library(tidyr)
@@ -34,27 +36,44 @@ library(readr)
 ?read_csv
 dataset <- read_csv("owid-covid-data-26-06-2021.csv")
 
-##                                    ##
+########################################
 ##                                    ##
 #### ANÁLISE EXPLORATÓRIA DOS DADOS ####
 ##                                    ##
-##                                    ##
+########################################
 
 # Visualização do Dataset
 View(dataset)
 
-# Apresentação dos dados de medidas centrais
-summary(dataset)
-
 # Classes de variáveis
 str(dataset)
+
+
+##                             ##
+##                             ##
+#### TRANSFORMAÇÃO DOS DADOS ####
+##                             ##
+##                             ##
+
 
 # Validando total de NA nas colunas
 Qtd_NA_coluna <- colSums(is.na(dataset))
 View(Qtd_NA_coluna)
 
+# De acordo com a visualização de NA, existe algumas colunas onde todas as observações
+# são NA, logo, iremos remover essas colunas
+dataset <- dataset[,c(!Qtd_NA_coluna == nrow(dataset))]
+View(dataset)
+str(dataset)
+
+# Selecionando as observações com NA
+dataset %>%
+  filter(!complete.cases(.)) %>%
+  View()
+# Como podemos ver, ainda em todas observações, ao menos uma variável possue valor NA.
+
 # Validando total de NA na coluna target
-colSums(is.na(dataset[,c("reproduction_rate")]))
+colSums(is.na(dataset[,c("reproduction_rate", "date")]))
 
 # Neste cenário, será retirado as observações com valores NA da coluna reproduction_rate
 dataset <- dataset %>% drop_na("reproduction_rate")
@@ -62,6 +81,88 @@ View(dataset)
 
 # Validando a remoção dos valores NA
 colSums(is.na(dataset[,c("reproduction_rate")]))
+
+# Validando a variável qualitativa nominal: tests_units
+sum(is.na(dataset$tests_units))
+table(dataset$tests_units)
+
+# Vamos alterar os valores de NA para: no information
+dataset <- dataset %>%
+          mutate(tests_units = if_else(is.na(tests_units), 
+                                       'no information', 
+                                       tests_units))
+table(dataset$tests_units)
+
+# Validando total de NA nas colunas novamente
+Qtd_NA_coluna <- colSums(is.na(dataset))
+View(Qtd_NA_coluna)
+
+
+# Nosso dataset possui 78887 observações. 
+# Algumas variáveis ainda possuem um alto índice de valores NA
+# Algumas referências citam que observações com mais de 70% de Na é aceitavel o drop da mesma.
+# Referência: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3701793/
+# Listwise vs. Pairwise
+
+missing_data_rate <- ((Qtd_NA_coluna * 100) / nrow(dataset) > 75)
+# Variáveis com mais de 75% de NA
+# total_vaccinations
+# new_vaccinations
+# people_vaccinated
+# people_fully_vaccinated 
+# total_vaccinations_per_hundred
+# people_fully_vaccinated_per_hundred
+# excess_mortality 
+# people_vaccinated_per_hundred
+
+# Visualização das colunas com + de 75 % de NA
+View(dataset[, missing_data_rate])
+
+# Conforme variáveis apresentadas, será dropada a coluna excess_mortality de momento
+dataset$excess_mortality <- NULL
+View(dataset)
+
+
+## SUBSTITUÍNDO VALORES NA UTILIZANDO MICE ##
+
+
+
+
+
+
+
+# Vamos remover as variáveis que não serão utilizadas
+variaveis_dispensadas <- c("iso_code", "continent", "life_expectancy", "hospital_beds_per_thousand",
+                           "diabetes_prevalence", "female_smokers", "male_smokers", "cardiovasc_death_rate",
+                           "aged_70_older", "aged_65_older", "new_vaccinations_smoothed_per_million", "weekly_hosp_admissions_per_million",
+                           "weekly_hosp_admissions", "weekly_icu_admissions_per_million", "icu_patients_per_million", "hosp_patients_per_million")
+dataset[,variaveis_dispensadas] <- NULL
+
+# Validando novamente os valores NA
+colSums(is.na(dataset))
+
+# Retirando valores menores que 0
+dataset_non_negative_values = dataset %>% filter(new_cases >= 0, 
+                                                 new_cases_smoothed >= 0, 
+                                                 new_deaths >= 0,  
+                                                 new_deaths_smoothed >= 0,
+                                                 new_tests >= 0)
+
+
+
+# Tratando valores NA
+# Para esse cenário, não podemos remover os valores NA por completo pois senão todo dataset será removido.
+# Conforme podemos verificar abaixo.
+dataset_sem_na <- na.omit(dataset)
+View(dataset_sem_na)
+
+
+
+##           ##
+##           ##
+#### PLOTs ####
+##           ##
+##           ##
 
 # Plotando série temporal para reproduction_rate
 df_america_sul <- filter(dataset, continent %in% "South America")
@@ -72,12 +173,6 @@ min_date <- min(df_america_sul$date)
 max_date <- max(df_america_sul$date)
 min_date
 max_date
-
-##           ##
-##           ##
-#### PLOTs ####
-##           ##
-##           ##
 
 ggplot(data = df_america_sul, mapping = aes(x = date, y = reproduction_rate), 
       group = date,
@@ -141,37 +236,7 @@ ggplot() +
 # Neste cenário, teremos duas variáveis target, a data (date) e a taxa de reprodução (reproduction_rate). 
 
 
-##                             ##
-##                             ##
-#### TRANSFORMAÇÃO DOS DADOS ####
-##                             ##
-##                             ##
 
-# Vamos remover as variáveis que não serão utilizadas
-variaveis_dispensadas <- c("iso_code", "continent", "life_expectancy", "hospital_beds_per_thousand",
-                           "diabetes_prevalence", "female_smokers", "male_smokers", "cardiovasc_death_rate",
-                           "aged_70_older", "aged_65_older", "new_vaccinations_smoothed_per_million", "weekly_hosp_admissions_per_million",
-                           "weekly_hosp_admissions", "weekly_icu_admissions_per_million", "icu_patients", 
-                           "icu_patients_per_million", "hosp_patients_per_million")
-dataset[,variaveis_dispensadas] <- NULL
-
-# Validando novamente os valores NA
-colSums(is.na(dataset))
-
-# Retirando valores menores que 0
-dataset_non_negative_values = dataset %>% filter(new_cases >= 0, 
-                                                new_cases_smoothed >= 0, 
-                                                new_deaths >= 0,  
-                                                new_deaths_smoothed >= 0,
-                                                new_tests >= 0)
-
-
-
-# Tratando valores NA
-# Para esse cenário, não podemos remover os valores NA por completo pois senão todo dataset será removido.
-# Conforme podemos verificar abaixo.
-dataset_sem_na <- na.omit(dataset)
-View(dataset_sem_na)
 
 ##                                       ##
 ##                                       ##
