@@ -25,6 +25,8 @@ install.packages("ggplot2")
 install.packages("readr")
 install.packages("tidyverse")
 install.packages("mice")
+install.packages("lares")
+library(lares)
 library(mice)
 library(tidyverse)
 library(dplyr)
@@ -59,12 +61,14 @@ str(dataset)
 # Validando total de NA nas colunas
 Qtd_NA_coluna <- colSums(is.na(dataset))
 View(Qtd_NA_coluna)
+dim(dataset)
 
 # De acordo com a visualização de NA, existe algumas colunas onde todas as observações
 # são NA, logo, iremos remover essas colunas
 dataset <- dataset[,c(!Qtd_NA_coluna == nrow(dataset))]
 View(dataset)
 str(dataset)
+dim(dataset)
 
 # Selecionando as observações com NA
 dataset %>%
@@ -78,6 +82,7 @@ colSums(is.na(dataset[,c("reproduction_rate", "date")]))
 # Neste cenário, será retirado as observações com valores NA da coluna reproduction_rate
 dataset <- dataset %>% drop_na("reproduction_rate")
 View(dataset)
+dim(dataset)
 
 # Validando a remoção dos valores NA
 colSums(is.na(dataset[,c("reproduction_rate")]))
@@ -91,7 +96,10 @@ dataset <- dataset %>%
           mutate(tests_units = if_else(is.na(tests_units), 
                                        'no information', 
                                        tests_units))
+
+# TODO: Alterar para factor
 table(dataset$tests_units)
+class(dataset$tests_units)
 
 # Validando total de NA nas colunas novamente
 Qtd_NA_coluna <- colSums(is.na(dataset))
@@ -100,9 +108,9 @@ View(Qtd_NA_coluna)
 
 # Nosso dataset possui 78887 observações. 
 # Algumas variáveis ainda possuem um alto índice de valores NA
-# Algumas referências citam que observações com mais de 70% de Na é aceitavel o drop da mesma.
+# Algumas referências citam que observações com mais de 70% de Na é aceitável o drop da mesma.
 # Referência: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3701793/
-# Listwise vs. Pairwise
+# Listwise vs. Pairwise = Quando os dados Na forem completamente randons (MCAR)
 
 missing_data_rate <- ((Qtd_NA_coluna * 100) / nrow(dataset) > 75)
 # Variáveis com mais de 75% de NA
@@ -116,13 +124,54 @@ missing_data_rate <- ((Qtd_NA_coluna * 100) / nrow(dataset) > 75)
 # people_vaccinated_per_hundred
 
 # Visualização das colunas com + de 75 % de NA
-View(dataset[, missing_data_rate])
+dataset_missing_rate <- dataset[, missing_data_rate]
+View(dataset_missing_rate)
+summary(dataset_missing_rate)
 
-# Conforme variáveis apresentadas, será dropada a coluna excess_mortality de momento
-dataset$excess_mortality <- NULL
-View(dataset)
+# Essas colunas fazem sentido possuírem uma grande quantidade de valores NA
+# visto que a vacina só foi disponibilizada praticamente 1 ano depois da doença;
+# Como nosso problema de negócio está diretamente ligado a vacina, os dados anteriores a vacina
+# serão dropados.
 
+# Verificando inicio da vacinação
+dataset_inicio_vacina <- dataset %>%
+                          filter(total_vaccinations >= 1) %>%
+                          group_by(date) %>%
+                          arrange(total_vaccinations)
 
+dim(dataset_inicio_vacina)
+colSums(is.na(dataset_inicio_vacina))
+
+# Iremos manter apenas a variável Location
+dataset_inicio_vacina$iso_code <- NULL
+dataset_inicio_vacina$continent <- NULL
+
+# Dataset para trabalhar
+View(dataset_inicio_vacina)
+
+#### DAQUI PARA BAIXO DESCONSIDERAR ####
+
+# Verificando correlação entre as variáveis com valores NA
+
+dataset_aux <- dataset[, unlist(lapply(dataset, is.numeric))]
+datacor <- cor(dataset_aux, use = "pairwise.complete.obs")
+corr_var(dataset_aux,
+        reproduction_rate, 
+        top = 43
+)
+
+# Retirando os valores NA e verificando a correlação
+dataset_sem_na <- dataset %>% filter(complete.cases(.))
+View(dataset_sem_na)
+
+dataset_aux <- dataset_sem_na[, unlist(lapply(dataset_sem_na,  is.numeric))]
+datacor <- cor(dataset_aux)
+corr_var(dataset_aux,
+         reproduction_rate,
+         top = 43)
+                  
+
+## Iremos efetuar a trativa dos valores NA e refazer o teste de correlação.
 ## SUBSTITUÍNDO VALORES NA UTILIZANDO MICE ##
 
 
