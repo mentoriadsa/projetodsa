@@ -7,7 +7,7 @@
 # 
 # Dataset desenvolvido a partir de informações de: https://github.com/CSSEGISandData/COVID-19
 # 
-# Script responsável em lidar com os imputation das variáveis NA
+# Script responsável em tratar os dados mundiais.
 
 setwd("C:/Users/guice/Desktop/ProjetoMentoriaDSA")
 
